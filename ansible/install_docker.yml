@@ -1,0 +1,46 @@
+---
+- name: Установить Docker на виртуальную машину
+  hosts: sqlite_builder
+  become: yes
+  
+  tasks:
+    - name: Установить необходимые пакеты
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+    
+    - name: Добавить официальный GPG ключ Docker
+      shell: |
+        curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    
+    - name: Добавить репозиторий Docker
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
+        state: present
+    
+    - name: Установить Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        update_cache: yes
+    
+    - name: Запустить и включить сервис Docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+    
+    - name: Добавить пользователя vagrant в группу docker
+      user:
+        name: vagrant
+        groups: docker
+        append: yes

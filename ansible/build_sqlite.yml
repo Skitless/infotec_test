@@ -1,0 +1,74 @@
+---
+- name: Собрать SQLite и создать Docker образ
+  hosts: sqlite_builder
+  become: no 
+  
+  vars:
+    project_dir: /home/vagrant/project
+    sqlite_version: "3260000"
+  
+  tasks:
+    - name: Создать рабочую директорию
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+    
+    - name: Скачать исходный код SQLite
+      get_url:
+        url: "https://www.sqlite.org/2018/sqlite-amalgamation-{{ sqlite_version }}.zip"
+        dest: "{{ project_dir }}/sqlite-src.zip"
+    
+    - name: Распаковать исходный код
+      unarchive:
+        src: "{{ project_dir }}/sqlite-src.zip"
+        dest: "{{ project_dir }}"
+        remote_src: yes
+    
+    - name: Переименовать директорию с исходниками
+      shell: mv "{{ project_dir }}/sqlite-amalgamation-{{ sqlite_version }}" "{{ project_dir }}/sqlite-src"
+      args:
+        creates: "{{ project_dir }}/sqlite-src"
+    
+    - name: Скопировать CMakeLists.txt
+      copy:
+        src: "../CMakeLists.txt"
+        dest: "{{ project_dir }}/sqlite-src/CMakeLists.txt"
+    
+    - name: Собрать SQLite с помощью CMake
+      shell: |
+        cd {{ project_dir }}/sqlite-src
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make VERBOSE=1 2>&1 | tee build.log
+      args:
+        chdir: "{{ project_dir }}/sqlite-src"
+    
+    - name: Скопировать Dockerfile
+      copy:
+        src: "../Dockerfile"
+        dest: "{{ project_dir }}/Dockerfile"
+    
+    - name: Собрать Docker образ
+      docker_image:
+        name: sqlite-builder
+        source: build
+        build:
+          path: "{{ project_dir }}"
+          dockerfile: "{{ project_dir }}/Dockerfile"
+        force_source: yes
+    
+    - name: Сохранить логи сборки
+      copy:
+        src: "{{ project_dir }}/sqlite-src/build/build.log"
+        dest: "{{ project_dir }}/linux_build.log"
+        remote_src: yes
+    
+    - name: Проверить результат
+      shell: ls -la {{ project_dir }}/sqlite-src/build/libsqlite3.so
+      register: result
+      changed_when: false
+    
+    - name: Показать результат сборки
+      debug:
+        var: result.stdout
